@@ -57,6 +57,7 @@ struct IMapleConfigMap
 	virtual void GetAbsolutePosition(f32 *px, f32 *py) = 0;
 	virtual void GetMouse(u32 *buttons, f32 *delta_x, f32 *delta_y, f32 *delta_wheel) = 0;
 	virtual void SetImage(void* img)=0;
+	virtual void GetKeyboard(u8 *kb_shift, u8 *kb_led, u8 *kb_key, int *kb_key_retro, u8 *kb_used) = 0;
 	virtual ~IMapleConfigMap() {}
 };
 

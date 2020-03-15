@@ -336,8 +336,6 @@ void retro_init(void)
    environ_cb(RETRO_ENVIRONMENT_GET_CLEAR_ALL_THREAD_WAITS_CB, &frontend_clear_thread_waits_cb);
 
    init_kb_map();
-   struct retro_keyboard_callback kb_callback = { &retro_keyboard_event };
-   environ_cb(RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK, &kb_callback);
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
       libretro_supports_bitmasks = true;
@@ -2569,6 +2567,83 @@ static void updateMouseState(u32 port)
 	  mo_wheel_delta[port] += 10;
 }
 
+static void release_key(int key_index, u8 *kb_key, int *kb_key_retro, u8 *kb_used)
+{
+   for(int i = key_index; i < (*kb_used)-1; ++i) {
+      kb_key_retro[i] = kb_key_retro[i+1];
+      kb_key[i] = kb_key[i+1];
+   }
+
+   kb_key_retro[(*kb_used)-1] = 0;
+   kb_key[(*kb_used)-1] = 0;
+   (*kb_used)--;
+}
+
+static bool key_pressed(int retro_keycode, int *kb_key_retro, u8 *kb_used)
+{
+   for(int i = 0; i < (*kb_used); ++i) {
+      if (kb_key_retro[i] == retro_keycode) {
+         return true;
+      }
+   }
+
+   return false;
+}
+
+void GetKeyboardState(u32 port, u8 *kb_shift, u8 *kb_led, u8 *kb_key, int *kb_key_retro, u8 *kb_used)
+{
+   *kb_shift = 0;
+   *kb_led = 0; // unused
+
+   if (input_cb(port, RETRO_DEVICE_KEYBOARD, 0, RETROK_LSHIFT) ||
+       input_cb(port, RETRO_DEVICE_KEYBOARD, 0, RETROK_RSHIFT))
+   {
+      *kb_shift |= (0x02 | 0x20);
+   }
+
+   if (input_cb(port, RETRO_DEVICE_KEYBOARD, 0, RETROK_LCTRL) ||
+       input_cb(port, RETRO_DEVICE_KEYBOARD, 0, RETROK_RCTRL))
+   {
+      *kb_shift |= (0x01 | 0x10);
+   }
+
+   // Check to see if any pressed keys are down
+   
+   // Need to check key array in reverse order since a key getting released
+   // will affect the array indices after it
+   for(int i = (*kb_used)-1; i >= 0; --i) {
+      bool down = input_cb(port, RETRO_DEVICE_KEYBOARD, 0, kb_key_retro[i]);
+
+      if (!down) {
+         release_key(i, kb_key, kb_key_retro, kb_used);
+      }
+   }
+
+   // Now check to see if any new keys are down
+   
+   for(int retro_keycode = RETROK_FIRST; retro_keycode < RETROK_LAST && (*kb_used) < 6; ++retro_keycode) {
+      u8 dc_keycode = kb_map[retro_keycode];
+
+      if (dc_keycode == 0) {
+         continue;
+      }
+
+      bool down = input_cb(port, RETRO_DEVICE_KEYBOARD, 0, retro_keycode);
+
+      if (!down) {
+         continue;
+      }
+
+      if (key_pressed(retro_keycode, kb_key_retro, kb_used)) {
+         continue;
+      }
+
+      kb_key_retro[*kb_used] = retro_keycode;
+      kb_key[*kb_used] = dc_keycode;
+      (*kb_used)++;
+   }
+}
+
 static void UpdateInputStateNaomi(u32 port)
 {
    int id;
@@ -3097,83 +3172,6 @@ void UpdateVibration(u32 port, u32 value, u32 max_duration)
 	  vib_delta[port] = 0.0;
    else
 	  vib_delta[port] = FREQ / (1000.0 * INC * max(POW_POS, POW_NEG));
-}
-
-extern u8 kb_shift; 		// shift keys pressed (bitmask)
-extern u8 kb_key[6];		// normal keys pressed (up to 6)
-static int kb_used;
-
-static void release_key(unsigned dc_keycode)
-{
-   if (dc_keycode == 0)
-	  return;
-
-   if (kb_used > 0)
-   {
-	  for (int i = 0; i < 6; i++)
-	  {
-		 if (kb_key[i] == dc_keycode)
-		 {
-			kb_used--;
-			for (int j = i; j < 5; j++)
-			   kb_key[j] = kb_key[j + 1];
-			kb_key[5] = 0;
-		 }
-	  }
-   }
-}
-
-void retro_keyboard_event(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers)
-{
-   // Dreamcast keyboard emulation
-   if (keycode == RETROK_LSHIFT || keycode == RETROK_RSHIFT)
-	  if (!down)
-		 kb_shift &= ~(0x02 | 0x20);
-	  else
-		 kb_shift |= (0x02 | 0x20);
-   if (keycode == RETROK_LCTRL || keycode == RETROK_RCTRL)
-	  if (!down)
-		 kb_shift &= ~(0x01 | 0x10);
-	  else
-		 kb_shift |= (0x01 | 0x10);
-
-   // Make sure modifier keys are released
-   if ((key_modifiers & RETROKMOD_SHIFT) == 0)
-   {
-	  release_key(kb_map[RETROK_LSHIFT]);
-	  release_key(kb_map[RETROK_LSHIFT]);
-   }
-   if ((key_modifiers & RETROKMOD_CTRL) == 0)
-   {
-	  release_key(kb_map[RETROK_LCTRL]);
-	  release_key(kb_map[RETROK_RCTRL]);
-   }
-
-   u8 dc_keycode = kb_map[keycode];
-   if (dc_keycode != 0)
-   {
-	  if (down)
-	  {
-		 if (kb_used < 6)
-		 {
-			bool found = false;
-			for (int i = 0; !found && i < 6; i++)
-			{
-			   if (kb_key[i] == dc_keycode)
-				  found = true;
-			}
-			if (!found)
-			{
-			   kb_key[kb_used] = dc_keycode;
-			   kb_used++;
-			}
-		 }
-	  }
-	  else
-	  {
-		 release_key(dc_keycode);
-	  }
-   }
 }
 
 void* libPvr_GetRenderTarget()

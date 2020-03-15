@@ -1160,15 +1160,26 @@ struct maple_sega_purupuru : maple_base
 char EEPROM[0x100];
 bool EEPROM_loaded = false;
 
-u8 kb_shift; 		// shift keys pressed (bitmask)
-u8 kb_led; 			// leds currently lit
-u8 kb_key[6]={0};	// normal keys pressed
-
 struct maple_keyboard : maple_base
 {
+	u8 kb_shift; 		 // shift keys pressed (bitmask)
+	u8 kb_led; 			 // leds currently lit
+	u8 kb_key[6];		 // normal keys pressed (represented by dc keycodes)
+	int kb_key_retro[6]; // normal keys pressed (represented by libretro keycodes)
+	u8 kb_used = 0;      // number of keys pressed
+
 	virtual MapleDeviceType get_device_type()
 	{
 		return MDT_Keyboard;
+	}
+
+	virtual void OnSetup()
+	{
+		kb_shift = 0;
+		kb_led = 0;
+		memset(kb_key, 0, sizeof(kb_key));
+		memset(kb_key, 0, sizeof(kb_key_retro));
+		kb_used = 0;
 	}
 
 	virtual u32 dma(u32 cmd)
@@ -1205,21 +1216,18 @@ struct maple_keyboard : maple_base
 
          // Maximum current consumption (2)
 			w16(0x01F5);
-         
+
          return MDRS_DeviceStatus;
  		case MDCF_GetCondition:
-         w32(MFID_6_Keyboard);
-			//struct data
-			//int8 shift          ; shift keys pressed (bitmask)	//1
+			config->GetKeyboard(&kb_shift, &kb_led, kb_key, kb_key_retro, &kb_used);
+			w32(MFID_6_Keyboard);
 			w8(kb_shift);
-			//int8 led            ; leds currently lit			//1
 			w8(kb_led);
-			//int8 key[6]         ; normal keys pressed			//6
-         for (int i = 0; i < 6; i++)
+			for (int i = 0; i < 6; i++)
 			{
 				w8(kb_key[i]);
 			}
-         return MDRS_DataTransfer;
+			return MDRS_DataTransfer;
  		default:
 			INFO_LOG(MAPLE, "Keyboard: unknown MAPLE COMMAND %d", cmd);
          return MDRE_UnknownCmd;

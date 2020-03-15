@@ -20,6 +20,7 @@ Plugins:
 		InputUpdate(&fmt);
 		ImageUpdate(data);
 */
+void GetKeyboardState(u32 port, u8 *kb_shift, u8 *kb_led, u8 *kb_key, int *kb_key_retro, u8 *kb_used);
 void UpdateInputState(u32 port);
 void UpdateVibration(u32 port, u32 value, u32 max_duration);
 
@@ -195,6 +196,11 @@ struct MapleConfigMap : IMapleConfigMap
 	   mo_x_delta[pnum] = 0;
 	   mo_y_delta[pnum] = 0;
 	   mo_wheel_delta[pnum] = 0;
+	}
+	void GetKeyboard(u8 *kb_shift, u8 *kb_led, u8 *kb_key, int *kb_key_retro, u8 *kb_used)
+	{
+	   int pnum = player_num == -1 ? dev->bus_id : player_num;
+	   GetKeyboardState(pnum, kb_shift, kb_led, kb_key, kb_key_retro, kb_used);
 	}
 };
 
